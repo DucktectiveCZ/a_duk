@@ -1,0 +1,5 @@
+# The default animation
+animation = "idle"
+# The delay between updates in milliseconds
+update_delay = 100
+

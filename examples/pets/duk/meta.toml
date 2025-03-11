@@ -1,0 +1,9 @@
+# The name of the pet
+name = "Duk"
+# The description of the pet
+description = "A duk."
+# The state the pet will be in at the start
+default_state = "idle"
+# The delay in the main loop in milliseconds
+global_tick_delay = 50
+
