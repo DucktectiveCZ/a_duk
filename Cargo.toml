@@ -1,0 +1,13 @@
+[package]
+name = "a_duk"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.5"
+mlua = { version = "0.9", features = ["lua54", "vendored"] }
+crossterm = "0.27"
+directories = "5.0"
+
