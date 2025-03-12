@@ -117,14 +117,35 @@ impl StateMetadata {
         let toml_string = fs::read_to_string(path)
             .map_err(Error::IO)?;
 
-        Ok(toml::de::from_str(&toml_string)
-            .map_err(Error::TomlDeserializer)?)
+        toml::de::from_str(&toml_string).map_err(Error::TomlDeserializer)
+    }
+}
+
+#[derive(Debug)]
+pub struct StateEventHandlers<'lua> {
+    pub init: Option<Function<'lua>>,
+    pub update: Option<Function<'lua>>,
+    pub key_down: Option<Function<'lua>>,
+    pub key_up: Option<Function<'lua>>,
+}
+
+impl<'lua> StateEventHandlers<'lua> {
+    pub fn get_from(lua: &'lua Lua) -> Self {
+        let globals = lua.globals();
+
+        Self {
+            init: globals.get("Init").ok(),
+            update: globals.get("Update").ok(),
+            key_down: globals.get("Key_down").ok(),
+            key_up: globals.get("Key_up").ok(),
+        }
     }
 }
 
 #[derive(Debug)]
 pub struct State<'lua> {
     pub metadata: StateMetadata,
+    pub event_handlers: StateEventHandlers<'lua>,
 
     pub init_function: Function<'lua>,
     pub update_function: Function<'lua>,
@@ -148,7 +169,9 @@ impl<'lua> State<'lua> {
         let init_function: Function = lua.globals().get("Init").map_err(Error::Lua)?;
         let update_function: Function = lua.globals().get("Update").map_err(Error::Lua)?;
 
-        Ok(Self{ metadata, init_function, update_function})
+        let event_handlers = StateEventHandlers::get_from(lua);
+
+        Ok(Self{ metadata, event_handlers, init_function, update_function })
     }
 }
 

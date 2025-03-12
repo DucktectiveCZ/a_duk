@@ -5,17 +5,13 @@ use std::{
 use clap::Parser;
 use crossterm::{cursor, ExecutableCommand, terminal, execute};
 use directories::BaseDirs;
-use mlua::{Lua, Function};
+use mlua::Lua;
 
 use pet::{Animation, Pet};
 use args::Args;
 
 mod pet;
 mod args;
-
-struct EventHandlers<'lua> {
-    pub
-}
 
 fn main() -> Result<(), String> {
     let args = Args::parse();
@@ -39,7 +35,7 @@ fn main() -> Result<(), String> {
     println!("Loaded pet:");
     println!("Name: {}", pet.metadata.name);
     println!("Description: {}", pet.metadata.description);
-    sleep(Duration::from_secs(2));
+    sleep(Duration::from_secs(1));
     execute!(stdout, terminal::Clear(terminal::ClearType::All)).unwrap();
 
     // init loop
@@ -78,8 +74,10 @@ fn main() -> Result<(), String> {
         }).unwrap()
     ).unwrap();
 
-    pet.states.get(current_state).unwrap().init_function.call::<(), ()>(())
-        .map_err(|e| format!("The pet's init function failed: '{}'", e))?;
+    if let Some(f) = &pet.states.get(current_state).unwrap().event_handlers.init {
+        f.call::<(), ()>(())
+            .map_err(|e| format!("The pet's init function failed: '{}'", e))?;
+    }
 
     loop {
         now = Instant::now();
@@ -100,10 +98,12 @@ fn main() -> Result<(), String> {
             last_render = now;
         }
 
-        if now.duration_since(last_update).as_millis() >= state.metadata.update_delay.into() {
-            state.update_function.call::<(), ()>(())
-                .map_err(|e|
-                    format!("The pet's update function failed: '{e}'"))?;
+        if state.event_handlers.update.is_some() && now.duration_since(last_update).as_millis() >= state.metadata.update_delay.into() {
+            if let Some(f) = &state.event_handlers.update {
+                f.call::<(), ()>(())
+                    .map_err(|e|
+                        format!("The pet's update function failed: '{e}'"))?;
+            }
 
             last_update = now;
         }
