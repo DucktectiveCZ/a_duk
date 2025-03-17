@@ -1,9 +1,9 @@
 use std::{
-    fs, io::stdout, path::PathBuf, string::String, thread::sleep, time::{Duration, Instant}
+    fs, io::{stdout, Stdout, Write}, path::PathBuf, string::String, sync::{atomic::{AtomicBool, Ordering}, Arc}, thread::sleep, time::{Duration, Instant}
 };
 
 use clap::Parser;
-use crossterm::{cursor, ExecutableCommand, terminal, execute};
+use crossterm::{cursor::{self, MoveTo}, event::{self, KeyEvent}, execute, terminal::{self, disable_raw_mode, enable_raw_mode}, ExecutableCommand};
 use directories::BaseDirs;
 use mlua::Lua;
 
@@ -13,8 +13,26 @@ use args::Args;
 mod pet;
 mod args;
 
+fn clear(stdout: &mut Stdout) {
+    execute!(stdout, terminal::Clear(terminal::ClearType::All)).unwrap();
+    execute!(stdout, MoveTo(0,0)).unwrap();
+}
+
 fn main() -> Result<(), String> {
     let args = Args::parse();
+
+    // Weird async shit just to handle sigint :D
+    // I have no idea what im doing :D
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+
+    enable_raw_mode().expect("Unable to enable raw mode");
+
+    ctrlc::set_handler(move || {
+        println!("sigint");
+        r.store(false, Ordering::SeqCst);
+    })
+    .expect("Error setting sigint handler");
 
     let mut stdout = stdout();
     stdout.execute(cursor::Hide).unwrap();
@@ -36,7 +54,7 @@ fn main() -> Result<(), String> {
     println!("Name: {}", pet.metadata.name);
     println!("Description: {}", pet.metadata.description);
     sleep(Duration::from_secs(1));
-    execute!(stdout, terminal::Clear(terminal::ClearType::All)).unwrap();
+    clear(&mut stdout);
 
     // init loop
     let current_state = &pet.metadata.default_state;
@@ -74,20 +92,24 @@ fn main() -> Result<(), String> {
         }).unwrap()
     ).unwrap();
 
+    // Call the init event of the initial status
     if let Some(f) = &pet.states.get(current_state).unwrap().event_handlers.init {
         f.call::<(), ()>(())
             .map_err(|e| format!("The pet's init function failed: '{}'", e))?;
     }
 
-    loop {
+    while running.load(Ordering::SeqCst) {
         now = Instant::now();
         let state = pet.states.get(current_state).unwrap();
 
         if now.duration_since(last_render).as_millis() >= pet.animations.get(current_state).unwrap().metadata.delay.into() {
             let anim = pet.animations.get(&current_anim).unwrap();
 
-            execute!(stdout, terminal::Clear(terminal::ClearType::All)).unwrap();
+            clear(&mut stdout);
+            disable_raw_mode().unwrap();
             println!("{}", anim.frames[current_frame]);
+            enable_raw_mode().unwrap();
+            // stdout.write_all(anim.frames[current_frame].as_bytes()).unwrap();
 
             if current_frame == anim.frames.len() - 1 && anim.name != state.metadata.animation {
                 current_anim = state.metadata.animation.clone();
@@ -108,8 +130,23 @@ fn main() -> Result<(), String> {
             last_update = now;
         }
 
+        if event::poll(Duration::ZERO).unwrap() {
+            if let event::Event::Key(KeyEvent { code, ..}) = event::read().unwrap() {
+                match code {
+                    event::KeyCode::Esc => break,
+                    _ => println!()
+                }
+            }
+        }
+
         sleep(delay);
-    }
+    };
+
+    // Cleanup
+    stdout.execute(cursor::Show).unwrap();
+    disable_raw_mode().expect("Failed to disable raw mode");
+
+    Ok(())
 }
 
 fn next_frame(frame: &usize, animation: &Animation) -> usize {
